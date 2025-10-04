@@ -1,7 +1,7 @@
 {
-  "name": "avinci-backend",
-  "version": "1.0.0",
-  "description": "Avinci AI Agent Portal Backend",
+  "name": "sirius-backend",
+  "version": "0.1.0",
+  "description": "Sirius AI Agent Portal Backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

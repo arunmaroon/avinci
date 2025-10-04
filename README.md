@@ -1,4 +1,4 @@
-# Avinci - AI Intelligence Platform
+# Sirius - AI Intelligence Platform
 
 A comprehensive AI-powered platform built with modern technologies for intelligent conversations, document processing, and data analysis.
 
@@ -260,9 +260,13 @@ For support and questions:
 
 ## 🔄 Updates
 
-- **v1.0.0**: Initial release with core features
-- **v1.1.0**: Added vector search capabilities
-- **v1.2.0**: Enhanced UI and performance improvements
+- **v0.1.0**: Initial release with core features
+  - Complete development environment setup
+  - Backend API with authentication and AI services
+  - React frontend with modern UI
+  - Python data processing pipeline
+  - Docker containerization
+  - Vector database integration
 
 ---
 

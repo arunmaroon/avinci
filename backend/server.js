@@ -22,13 +22,13 @@ app.get('/api/health', (req, res) => {
 // Test route
 app.get('/api/test', (req, res) => {
     res.json({
-        message: 'Avinci Backend is running!',
-        version: '1.0.0'
+        message: 'Sirius Backend is running!',
+        version: '0.1.0'
     });
 });
 
 // Start server
 app.listen(PORT, () => {
-    console.log(`🚀 Avinci Backend running on port ${PORT}`);
+    console.log(`🚀 Sirius Backend running on port ${PORT}`);
     console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
 });

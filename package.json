@@ -1,7 +1,7 @@
 {
-  "name": "avinci",
-  "version": "1.0.0",
-  "description": "Avinci AI Agent Portal - Complete development environment",
+  "name": "sirius",
+  "version": "0.1.0",
+  "description": "Sirius AI Agent Portal - Complete development environment",
   "scripts": {
     "setup": "./setup.sh",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
