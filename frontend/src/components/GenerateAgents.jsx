@@ -1,9 +1,10 @@
 import React from 'react';
+import { Button, Card } from './design-system';
 
 const GenerateAgents = ({ onBuildViaDocument, onBuildViaConfig, onGenerateAgents }) => {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">Generate New AI Agents</h2>
+    <Card>
+      <h2 className="text-h3 mb-6">Generate New AI Agents</h2>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Build via Document */}
@@ -42,17 +43,19 @@ const GenerateAgents = ({ onBuildViaDocument, onBuildViaConfig, onGenerateAgents
           <p className="text-sm text-gray-600 mb-4">
             Or generate sample agents instantly to get started
           </p>
-          <button
+          <Button
             onClick={onGenerateAgents}
-            className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
-          >
-            <div className="flex items-center space-x-2">
+            variant="primary"
+            size="lg"
+            className="w-full"
+            icon={
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <span>Generate Sample Agents</span>
-            </div>
-          </button>
+            }
+          >
+            Generate Sample Agents
+          </Button>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-# Sirius 0.2 - AI Intelligence Platform
+# Sirius - AI Intelligence Platform
 
 A comprehensive AI-powered platform built with modern technologies for intelligent conversations, document processing, and data analysis.
 
