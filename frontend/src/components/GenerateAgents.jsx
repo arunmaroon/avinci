@@ -58,7 +58,7 @@ const GenerateAgents = ({ onBuildViaDocument, onBuildViaConfig, onGenerateAgents
           </Button>
         </div>
       </div>
-    </div>
+    </Card>
   );
 };
 
