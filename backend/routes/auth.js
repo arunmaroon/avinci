@@ -6,13 +6,12 @@ const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Login
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
     try {
         const userResult = await pool.query(
-            'SELECT id, email, password_hash, name, role FROM admin_users WHERE email = $1',
+            'SELECT id, email, password_hash, name, role, is_active FROM admin_users WHERE email = $1',
             [email]
         );
 
@@ -21,21 +20,22 @@ router.post('/login', async (req, res) => {
         }
 
         const user = userResult.rows[0];
+
+        if (!user.is_active) {
+            return res.status(403).json({ error: 'Account is deactivated' });
+        }
+
         const validPassword = await bcrypt.compare(password, user.password_hash);
 
         if (!validPassword) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // Update last login
-        await pool.query(
-            'UPDATE admin_users SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
-            [user.id]
-        );
+        await pool.query('UPDATE admin_users SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
 
         const token = jwt.sign(
             { userId: user.id, email: user.email, role: user.role },
-            process.env.JWT_SECRET || 'your-secret-key',
+            process.env.JWT_SECRET || 'avinci-jwt-secret',
             { expiresIn: '24h' }
         );
 
@@ -54,14 +54,11 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// Verify token
 router.get('/verify', authenticateToken, (req, res) => {
     res.json({ user: req.user });
 });
 
-// Logout
 router.post('/logout', authenticateToken, (req, res) => {
-    // In a real app, you might want to blacklist the token
     res.json({ message: 'Logged out successfully' });
 });
 

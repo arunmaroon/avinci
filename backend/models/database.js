@@ -76,6 +76,24 @@ const createTables = async () => {
             );
         `);
 
+        // New agents table for the chat system
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS agents (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name VARCHAR(100) NOT NULL,
+                persona VARCHAR(100) NOT NULL,
+                knowledge_level VARCHAR(20) NOT NULL,
+                language_style VARCHAR(20) NOT NULL,
+                emotional_range VARCHAR(20) DEFAULT 'Moderate',
+                hesitation_level VARCHAR(20) DEFAULT 'Medium',
+                traits JSONB DEFAULT '[]',
+                prompt TEXT,
+                avatar VARCHAR(500),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
         // Document uploads table
         await pool.query(`
             CREATE TABLE IF NOT EXISTS document_uploads (

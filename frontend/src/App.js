@@ -1,31 +1,60 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import SimpleLogin from './components/SimpleLogin';
+import Layout from './components/Layout';
+import AIAgents from './pages/AIAgents';
+import AgentPreview from './components/AgentPreview';
 import './index.css';
 
 function App() {
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="card max-w-md">
-        <div className="flex items-center justify-center mb-6">
-          <div className="w-16 h-16 bg-gradient-to-r from-rose-500 to-pink-500 rounded-2xl flex items-center justify-center">
-            <span className="text-white font-bold text-2xl">AV</span>
-          </div>
-        </div>
-        <h1 className="text-3xl font-bold text-center text-gray-900 mb-4">
-          Welcome to Avinci
-        </h1>
-        <p className="text-center text-gray-600 mb-6">
-          AI-Powered User Research Platform
-        </p>
-        <button className="btn-primary w-full">
-          Get Started
-        </button>
-        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-          <p className="text-sm text-green-700 text-center">
-            ✅ Frontend is working correctly!
-          </p>
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Check if user is logged in
+    const userData = localStorage.getItem('sirius_user');
+    if (userData) {
+      setUser(JSON.parse(userData));
+    }
+    setIsLoading(false);
+  }, []);
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+    localStorage.setItem('sirius_user', JSON.stringify(userData));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('sirius_user');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
-    </div>
+    );
+  }
+
+  if (!user) {
+    return <SimpleLogin onLogin={handleLogin} />;
+  }
+
+  return (
+    <Router>
+      <Layout onLogout={handleLogout}>
+      <Routes>
+        <Route path="/" element={<AIAgents />} />
+        <Route path="/ai-agents" element={<AIAgents />} />
+        <Route path="/agent-preview" element={<AgentPreview />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+      </Layout>
+    </Router>
   );
 }
 

@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import api from '../utils/api';
 
 const AuthContext = createContext();
 
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {
-        throw new Error('useAuth must be used within an AuthProvider');
+        throw new Error('useAuth must be used within AuthProvider');
     }
     return context;
 };
@@ -25,20 +26,10 @@ export const AuthProvider = ({ children }) => {
 
     const verifyToken = async (token) => {
         try {
-            const response = await fetch('/api/auth/verify', {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setUser(data.user);
-            } else {
-                localStorage.removeItem('token');
-            }
+            const response = await api.get('/auth/verify');
+            setUser(response.data.user);
         } catch (error) {
-            console.error('Token verification failed:', error);
+            console.error('Token verification failed');
             localStorage.removeItem('token');
         } finally {
             setLoading(false);
@@ -47,53 +38,30 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (email, password) => {
         try {
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ email, password })
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                localStorage.setItem('token', data.token);
-                setUser(data.user);
-                return { success: true };
-            } else {
-                return { success: false, error: data.error };
-            }
+            const response = await api.post('/auth/login', { email, password });
+            localStorage.setItem('token', response.data.token);
+            setUser(response.data.user);
+            return { success: true };
         } catch (error) {
-            return { success: false, error: 'Login failed' };
+            return { 
+                success: false, 
+                error: error.response?.data?.error || 'Login failed' 
+            };
         }
     };
 
     const logout = async () => {
         try {
-            await fetch('/api/auth/logout', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
+            await api.post('/auth/logout');
         } catch (error) {
             console.error('Logout error:', error);
         }
-
         localStorage.removeItem('token');
         setUser(null);
     };
 
-    const value = {
-        user,
-        login,
-        logout,
-        loading
-    };
-
     return (
-        <AuthContext.Provider value={value}>
+        <AuthContext.Provider value={{ user, login, logout, loading }}>
             {children}
         </AuthContext.Provider>
     );
