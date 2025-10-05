@@ -3,6 +3,7 @@ const multer = require('multer');
 const OpenAI = require('openai');
 const { pool } = require('../models/database');
 const { redis } = require('../models/database');
+const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
 
@@ -307,6 +308,383 @@ async function addHumanLikeBehavior(response, agent) {
   }
 
   return modifiedResponse;
+}
+
+// Start new chat session
+router.post('/start-session', async (req, res) => {
+  try {
+    const { agentId, sessionName } = req.body;
+    
+    if (!agentId) {
+      return res.status(400).json({ error: 'Agent ID is required' });
+    }
+
+    // Get agent details
+    const agentResult = await pool.query('SELECT * FROM agents WHERE id = $1', [agentId]);
+    if (agentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const agent = agentResult.rows[0];
+    const sessionId = uuidv4();
+
+    // Store session in Redis
+    await redis.setex(`session:${sessionId}`, 3600, JSON.stringify({
+      agentId,
+      sessionName: sessionName || `Chat with ${agent.name}`,
+      createdAt: new Date().toISOString(),
+      lastActivity: new Date().toISOString()
+    }));
+
+    res.json({
+      sessionId,
+      agent: {
+        id: agent.id,
+        name: agent.name,
+        persona: agent.persona,
+        avatar_url: agent.avatar_url
+      },
+      conversationHistory: []
+    });
+
+  } catch (error) {
+    console.error('Error starting chat session:', error);
+    res.status(500).json({ error: 'Failed to start chat session', details: error.message });
+  }
+});
+
+// Send message and get response
+router.post('/message', async (req, res) => {
+  try {
+    const { sessionId, agentId, message } = req.body;
+
+    if (!sessionId || !agentId || !message) {
+      return res.status(400).json({ error: 'Session ID, Agent ID, and message are required' });
+    }
+
+    // Get session from Redis
+    const sessionData = await redis.get(`session:${sessionId}`);
+    if (!sessionData) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    const session = JSON.parse(sessionData);
+
+    // Get agent details
+    const agentResult = await pool.query('SELECT * FROM agents WHERE id = $1', [agentId]);
+    if (agentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const agent = agentResult.rows[0];
+
+    // Get conversation history
+    const historyKey = `conversation:${sessionId}`;
+    const historyData = await redis.get(historyKey);
+    const conversationHistory = historyData ? JSON.parse(historyData) : [];
+
+    // Create realistic response
+    const response = await generateRealisticResponse(agent, message, conversationHistory);
+
+    // Store user message
+    const userMessage = {
+      id: uuidv4(),
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString()
+    };
+
+    // Store agent response
+    const agentMessage = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: response.text,
+      timestamp: new Date().toISOString(),
+      emotion: response.emotion
+    };
+
+    // Update conversation history
+    const updatedHistory = [...conversationHistory, userMessage, agentMessage];
+    await redis.setex(historyKey, 3600, JSON.stringify(updatedHistory));
+
+    // Update session last activity
+    session.lastActivity = new Date().toISOString();
+    await redis.setex(`session:${sessionId}`, 3600, JSON.stringify(session));
+
+    res.json({
+      messageId: agentMessage.id,
+      response: response.text,
+      typing_duration: response.typingDuration,
+      emotion: response.emotion,
+      timestamp: agentMessage.timestamp
+    });
+
+  } catch (error) {
+    console.error('Error processing message:', error);
+    res.status(500).json({ error: 'Failed to process message', details: error.message });
+  }
+});
+
+// Get session details
+router.get('/session/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Get session from Redis
+    const sessionData = await redis.get(`session:${sessionId}`);
+    if (!sessionData) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    const session = JSON.parse(sessionData);
+
+    // Get conversation history
+    const historyKey = `conversation:${sessionId}`;
+    const historyData = await redis.get(historyKey);
+    const messages = historyData ? JSON.parse(historyData) : [];
+
+    // Get agent details
+    const agentResult = await pool.query('SELECT * FROM agents WHERE id = $1', [session.agentId]);
+    const agent = agentResult.rows[0];
+
+    res.json({
+      session,
+      messages,
+      agent
+    });
+
+  } catch (error) {
+    console.error('Error getting session:', error);
+    res.status(500).json({ error: 'Failed to get session', details: error.message });
+  }
+});
+
+// Mark messages as read
+router.put('/session/:sessionId/mark-read', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Update session last activity
+    const sessionData = await redis.get(`session:${sessionId}`);
+    if (sessionData) {
+      const session = JSON.parse(sessionData);
+      session.lastActivity = new Date().toISOString();
+      await redis.setex(`session:${sessionId}`, 3600, JSON.stringify(session));
+    }
+
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error('Error marking messages as read:', error);
+    res.status(500).json({ error: 'Failed to mark messages as read', details: error.message });
+  }
+});
+
+// Generate realistic response with human-like behavior
+async function generateRealisticResponse(agent, userMessage, conversationHistory) {
+  try {
+    // Analyze user message sentiment and complexity
+    const messageAnalysis = analyzeUserMessage(userMessage);
+    
+    // Update agent's emotional state based on conversation
+    const emotionalState = updateEmotionalState(agent, userMessage, conversationHistory);
+    
+    // Build contextual system prompt
+    const systemPrompt = buildContextualPrompt(agent, emotionalState, conversationHistory);
+    
+    // Prepare messages for OpenAI
+    let messages = [{ role: 'system', content: systemPrompt }];
+    
+    // Add conversation history (last 10 messages)
+    const recentHistory = conversationHistory.slice(-10);
+    for (const msg of recentHistory) {
+      messages.push({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      });
+    }
+    
+    // Add current user message
+    messages.push({ role: 'user', content: userMessage });
+
+    // Generate response
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: messages,
+      temperature: 0.7 + (emotionalState.intensity * 0.2), // Vary based on emotion
+      max_tokens: 500
+    });
+
+    let responseText = response.choices[0].message.content;
+
+    // Post-process for realism
+    responseText = addHumanElements(responseText, agent, emotionalState);
+    
+    // Calculate typing delay
+    const typingDuration = calculateTypingDelay(responseText, agent, messageAnalysis);
+
+    return {
+      text: responseText,
+      emotion: emotionalState.current,
+      typingDuration: typingDuration
+    };
+
+  } catch (error) {
+    console.error('Error generating realistic response:', error);
+    return {
+      text: "I'm sorry, I'm having trouble processing that right now. Could you please try again?",
+      emotion: 'neutral',
+      typingDuration: 2000
+    };
+  }
+}
+
+// Analyze user message for sentiment and complexity
+function analyzeUserMessage(message) {
+  const complexity = message.length > 100 ? 'high' : message.length > 50 ? 'medium' : 'low';
+  const hasQuestion = message.includes('?');
+  const hasExclamation = message.includes('!');
+  const isUrgent = message.toLowerCase().includes('urgent') || message.toLowerCase().includes('asap');
+  
+  return {
+    complexity,
+    hasQuestion,
+    hasExclamation,
+    isUrgent,
+    length: message.length
+  };
+}
+
+// Update agent's emotional state based on conversation
+function updateEmotionalState(agent, userMessage, conversationHistory) {
+  const baseEmotion = agent.emotional_range || 'Moderate';
+  let currentEmotion = 'neutral';
+  let intensity = 0.5;
+
+  // Analyze recent conversation for emotional cues
+  const recentMessages = conversationHistory.slice(-5);
+  const hasPositiveCues = userMessage.toLowerCase().includes('thank') || 
+                         userMessage.toLowerCase().includes('great') ||
+                         userMessage.toLowerCase().includes('awesome');
+  
+  const hasNegativeCues = userMessage.toLowerCase().includes('problem') ||
+                         userMessage.toLowerCase().includes('issue') ||
+                         userMessage.toLowerCase().includes('wrong');
+
+  if (hasPositiveCues) {
+    currentEmotion = 'interested';
+    intensity = 0.7;
+  } else if (hasNegativeCues) {
+    currentEmotion = 'cautious';
+    intensity = 0.6;
+  } else if (userMessage.length > 100) {
+    currentEmotion = 'thoughtful';
+    intensity = 0.8;
+  }
+
+  return {
+    current: currentEmotion,
+    intensity: intensity,
+    base: baseEmotion
+  };
+}
+
+// Build contextual prompt based on agent and emotional state
+function buildContextualPrompt(agent, emotionalState, conversationHistory) {
+  let prompt = `You are ${agent.name}, a ${agent.persona}. `;
+  
+  // Add personality traits
+  if (agent.traits && agent.traits.length > 0) {
+    prompt += `Your key traits are: ${agent.traits.join(', ')}. `;
+  }
+  
+  // Add knowledge level context
+  const knowledgeContext = {
+    'Novice': 'You have basic knowledge and prefer simple explanations. Ask clarifying questions when things are unclear.',
+    'Intermediate': 'You have moderate knowledge and can discuss topics with some depth. You occasionally ask questions.',
+    'Advanced': 'You have good knowledge and can provide detailed explanations. You rarely need clarification.',
+    'Expert': 'You have extensive knowledge and can provide comprehensive, technical explanations.'
+  };
+  prompt += knowledgeContext[agent.knowledgeLevel] || knowledgeContext['Intermediate'];
+  
+  // Add emotional state context
+  const emotionContext = {
+    'neutral': 'Respond in a calm, professional manner.',
+    'interested': 'Show enthusiasm and engagement in your response.',
+    'cautious': 'Be careful and thoughtful in your response, asking clarifying questions.',
+    'thoughtful': 'Take time to consider your response carefully.',
+    'excited': 'Show excitement and energy in your response.'
+  };
+  prompt += ` ${emotionContext[emotionalState.current] || emotionContext['neutral']}`;
+  
+  // Add conversation context
+  if (conversationHistory.length > 0) {
+    prompt += ` You are continuing a conversation, so reference previous topics naturally.`;
+  }
+  
+  prompt += `\n\nRespond as naturally as possible, incorporating your persona's characteristics. Use appropriate fillers, hesitations, and natural speech patterns. Keep responses conversational and human-like.`;
+  
+  return prompt;
+}
+
+// Add human-like elements to response
+function addHumanElements(text, agent, emotionalState) {
+  let modifiedText = text;
+  
+  // Add fillers based on hesitation level
+  const hesitationLevel = agent.hesitationLevel || 'Medium';
+  const fillerChance = {
+    'Low': 0.1,
+    'Medium': 0.2,
+    'High': 0.3
+  };
+  
+  if (Math.random() < fillerChance[hesitationLevel]) {
+    const fillers = ['Um...', 'Well...', 'You know...', 'I mean...'];
+    const filler = fillers[Math.floor(Math.random() * fillers.length)];
+    modifiedText = filler + ' ' + modifiedText;
+  }
+  
+  // Add self-corrections occasionally
+  if (Math.random() < 0.1) {
+    const corrections = ['Actually...', 'I mean...', 'Wait, let me think...'];
+    const correction = corrections[Math.floor(Math.random() * corrections.length)];
+    modifiedText = correction + ' ' + modifiedText;
+  }
+  
+  // Add emotional expressions
+  if (emotionalState.intensity > 0.7) {
+    const expressions = ['!', '...', '?'];
+    if (Math.random() < 0.3) {
+      modifiedText += expressions[Math.floor(Math.random() * expressions.length)];
+    }
+  }
+  
+  return modifiedText;
+}
+
+// Calculate realistic typing delay
+function calculateTypingDelay(responseText, agent, messageAnalysis) {
+  const baseDelay = 1000; // 1 second base
+  const lengthDelay = responseText.length * 50; // 50ms per character
+  const complexityDelay = messageAnalysis.complexity === 'high' ? 2000 : 
+                         messageAnalysis.complexity === 'medium' ? 1000 : 500;
+  
+  // Adjust based on agent's tech savviness (typing speed)
+  const techSavviness = agent.knowledgeLevel || 'Intermediate';
+  const speedMultiplier = {
+    'Novice': 1.5,
+    'Intermediate': 1.0,
+    'Advanced': 0.8,
+    'Expert': 0.6
+  };
+  
+  const totalDelay = (baseDelay + lengthDelay + complexityDelay) * speedMultiplier[techSavviness];
+  
+  // Add some randomness (±20%)
+  const randomFactor = 0.8 + (Math.random() * 0.4);
+  
+  return Math.min(Math.max(totalDelay * randomFactor, 1000), 8000); // Between 1-8 seconds
 }
 
 module.exports = router;

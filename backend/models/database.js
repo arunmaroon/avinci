@@ -89,6 +89,9 @@ const createTables = async () => {
                 traits JSONB DEFAULT '[]',
                 prompt TEXT,
                 avatar VARCHAR(500),
+                avatar_url VARCHAR(500),
+                avatar_seed VARCHAR(100),
+                status VARCHAR(20) DEFAULT 'active',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );

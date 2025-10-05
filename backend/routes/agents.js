@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../models/database');
 const { v4: uuidv4 } = require('uuid');
+const photoService = require('../services/photoService');
 
 const router = express.Router();
 
@@ -204,6 +205,90 @@ router.get('/generate/:jobId', async (req, res) => {
   } catch (error) {
     console.error('Error checking generation status:', error);
     res.status(500).json({ error: 'Failed to check generation status' });
+  }
+});
+
+// Photo management endpoints
+
+// Refresh photo for a specific agent
+router.post('/:id/photo/refresh', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const photoData = await photoService.refreshAgentPhoto(id);
+    res.json({ success: true, photo: photoData });
+  } catch (error) {
+    console.error('Error refreshing agent photo:', error);
+    res.status(500).json({ error: 'Failed to refresh agent photo', details: error.message });
+  }
+});
+
+// Assign photos to all agents without them
+router.post('/photos/assign-all', async (req, res) => {
+  try {
+    const results = await photoService.assignPhotosToAllAgents();
+    res.json({ success: true, results });
+  } catch (error) {
+    console.error('Error assigning photos to all agents:', error);
+    res.status(500).json({ error: 'Failed to assign photos', details: error.message });
+  }
+});
+
+// Get full agent profile with photo
+router.get('/:id/full-profile', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const agent = await photoService.getAgentFullProfile(id);
+    res.json(agent);
+  } catch (error) {
+    console.error('Error getting agent full profile:', error);
+    res.status(500).json({ error: 'Failed to get agent profile', details: error.message });
+  }
+});
+
+// Update agent status
+router.put('/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    if (!['active', 'sleeping', 'archived'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status. Must be active, sleeping, or archived' });
+    }
+    
+    const result = await pool.query(
+      'UPDATE agents SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      [status, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+    
+    res.json({ success: true, agent: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating agent status:', error);
+    res.status(500).json({ error: 'Failed to update agent status', details: error.message });
+  }
+});
+
+// Get agents by status
+router.get('/status/:status', async (req, res) => {
+  try {
+    const { status } = req.params;
+    
+    if (!['active', 'sleeping', 'archived'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status. Must be active, sleeping, or archived' });
+    }
+    
+    const result = await pool.query(
+      'SELECT * FROM agents WHERE status = $1 ORDER BY name ASC',
+      [status]
+    );
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error getting agents by status:', error);
+    res.status(500).json({ error: 'Failed to get agents by status', details: error.message });
   }
 });
 
